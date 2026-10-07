@@ -105,18 +105,48 @@ class MhzCO2:
         return value, err
 
 
+class Scd30CO2:
+    """Sensirion SCD30 (Adafruit STEMMA QT breakout), I2C address 0x61.
+
+    A diffusion NDIR sensor: it must sit in a small sealed chamber at the end
+    of the sampling line. It reports at most every 2 s, its range is 0-4 %
+    (end-tidal CO2 around 5 % will clip) and it responds over tens of seconds.
+    Expect the measured profile to say TREND_ONLY. Automatic self-calibration
+    is switched off because it assumes the sensor regularly sees fresh air
+    for days, which would pull the zero during a session.
+    """
+
+    def __init__(self, i2c):
+        import adafruit_scd30
+        self.scd = adafruit_scd30.SCD30(i2c)
+        self.scd.self_calibration_enabled = False
+        self.scd.measurement_interval = 2
+        self.errors = 0
+
+    def poll(self, t):
+        try:
+            if self.scd.data_available:
+                return self.scd.CO2 / 10000.0, False
+        except (OSError, RuntimeError):
+            self.errors += 1
+            return None, True
+        return None, False
+
+
 class LinePressure:
     """Sampling line vacuum from two DPS310 sensors (ambient minus pump inlet)."""
 
     def __init__(self, i2c, line_addr, ambient_addr, period_ms):
-        from adafruit_dps310.basic import DPS310
+        self.line = None
+        self.ambient = None
         self.period_ms = period_ms
         self.last_t = -period_ms
         self.value = None
         try:
+            from adafruit_dps310.basic import DPS310
             self.line = DPS310(i2c, address=line_addr)
             self.ambient = DPS310(i2c, address=ambient_addr)
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, ValueError, RuntimeError, ImportError):
             self.line = None
             self.ambient = None
 

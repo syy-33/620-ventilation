@@ -29,7 +29,7 @@ than pretending to be a capnograph**.
 | Path | What |
 |---|---|
 | `capno_core/` | Detection, alarm state machine, annunciation patterns, response model. CircuitPython-compatible; runs on the Pico **and** in tests |
-| `firmware/` | Pico 2 W hardware I/O: `code.py`, sensor drivers, `config.py` |
+| `firmware/` | Pico 2 W hardware I/O: `code.py`, sensor drivers, `config.py`; `pico-firmware.zip` is the ready-to-copy bundle |
 | `capno_service/` | Laptop service: serial ingest, SQLite, notification rules, FastAPI REST + SSE, dashboard |
 | `capno_analysis/` | Step-response analysis, response profile, calibration, fault-dataset scoring |
 | `capno_sim/` | Modelled airway + sampling line + slow NDIR sensor driving the same `capno_core` |
@@ -85,17 +85,26 @@ Gas path: mask / T-piece → sampling line → water trap → CO2 cell → pump
 
 ## Deploying the bedside unit
 
-1. Install CircuitPython 9.2 or later for the Raspberry Pi Pico 2 W.
-2. Install libraries: `pip install circup && circup install neopixel adafruit_dps310`.
-3. Edit `firmware/config.py`: sensor type, pressure sensors fitted, and — once
-   measured — the response profile block and calibration gain/offset.
-4. `python tools/deploy_firmware.py /media/$USER/CIRCUITPY` (copies
-   `capno_core` to `lib/` and the firmware to the root; keeps an existing
-   `config.py` on the board unless `--overwrite-config`).
+**Step-by-step beginner guide: [docs/10_flashing_guide.md](docs/10_flashing_guide.md).**
+
+1. Install CircuitPython for the Raspberry Pi Pico 2 W
+   (https://circuitpython.org/board/raspberry_pi_pico2_w/).
+2. Unzip [`firmware/pico-firmware.zip`](firmware/pico-firmware.zip) and copy
+   the contents of its `CIRCUITPY` folder onto the CIRCUITPY drive. All the
+   libraries are included.
+3. It starts in **demo mode** (`SENSOR = "demo"` in `config.py`): a built-in
+   fake signal that cycles through green, amber and red, so the light, speaker
+   and button can be checked with no sensor. The dashboard shows DEMO DATA.
+4. Edit `config.py` on the drive: sensor type (`scd30`, `gss`, `mhz`),
+   pressure sensors fitted, and, once measured, the response profile block
+   and calibration gain/offset.
 5. On power-up the ring cycles green, amber, red, cyan with tones: check you
    see and hear each one. Then it shows dim white (standby).
-6. Read `vac` in the serial output with a clear line and the pump running; put
-   that value in `line_vac_nominal_kpa`.
+6. With pressure sensors fitted: read `vac` in the serial output with a clear
+   line and the pump running, and put that value in `line_vac_nominal_kpa`.
+
+After changing firmware or `capno_core`, rebuild the zip with
+`python tools/build_pico_bundle.py` (a test fails if you forget).
 
 Bedside button: short press acknowledge · hold 2–5 s arm (airway placed) ·
 hold 5 s disarm (end of case) · double press marker.

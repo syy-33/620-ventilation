@@ -10,7 +10,9 @@
 #   D16    GP16                                          pushbutton to GND
 #   D18    GP18                                          NeoPixel ring 16 data
 #   D20    GP20 PWM -> 1k -> PAM8302 A+, GP21 -> SD      speaker amplifier
-#   GP22 (breadboard) -> logic-level MOSFET gate         sampling pump
+#   GP22 (breadboard) -> logic-level MOSFET gate         sampling pump (optional)
+#
+# config.py chooses the sensor ("demo" works with nothing connected).
 
 import json
 import sys
@@ -27,7 +29,7 @@ from capno_core.annunciator import AMBER, CYAN, GREEN, RED
 from capno_core.button import ButtonClassifier
 from capno_core.config import make_config
 from capno_core.device import Device
-from sensors import GssCO2, LinePressure, MhzCO2, now_ms
+from sensors import GssCO2, LinePressure, MhzCO2, Scd30CO2, now_ms
 
 TICK_MS = 100   # evaluate timers at least this often even without a sample
 
@@ -52,9 +54,37 @@ def self_test(pixels, tone):
     pixels.show()
 
 
+class NoSensor:
+    """Stands in when the configured sensor cannot be opened: the monitor then
+    reports SENSOR_SILENT (cyan) instead of the program crashing."""
+    errors = 0
+
+    def poll(self, t):
+        return None, False
+
+
+def open_co2_sensor(i2c):
+    try:
+        if config.SENSOR == "demo":
+            from capno_core.demo import DemoCO2
+            return DemoCO2()
+        if config.SENSOR == "scd30":
+            return Scd30CO2(i2c)
+        uart = busio.UART(board.GP0, board.GP1, baudrate=9600, timeout=0)
+        if config.SENSOR == "mhz":
+            return MhzCO2(uart, config.MHZ_POLL_MS)
+        if config.SENSOR == "gss":
+            return GssCO2(uart, config.GSS_UNFILTERED)
+        emit({"type": "err", "t": 0, "msg": "config.SENSOR not recognised: " + str(config.SENSOR)})
+    except (OSError, ValueError, RuntimeError, ImportError) as exc:
+        emit({"type": "err", "t": 0, "msg": "CO2 sensor not found: " + repr(exc)})
+    return NoSensor()
+
+
 def main():
-    pump = digitalio.DigitalInOut(board.GP22)
-    pump.switch_to_output(value=True)
+    if config.PUMP_SWITCHED:
+        pump = digitalio.DigitalInOut(board.GP22)
+        pump.switch_to_output(value=True)
 
     amp_sd = digitalio.DigitalInOut(board.GP21)
     amp_sd.switch_to_output(value=True)
@@ -68,15 +98,17 @@ def main():
     button_pin.switch_to_input(pull=digitalio.Pull.UP)
     button = ButtonClassifier()
 
-    uart = busio.UART(board.GP0, board.GP1, baudrate=9600, timeout=0)
-    if config.SENSOR == "mhz":
-        co2_sensor = MhzCO2(uart, config.MHZ_POLL_MS)
-    else:
-        co2_sensor = GssCO2(uart, config.GSS_UNFILTERED)
+    i2c = None
+    if config.SENSOR == "scd30" or config.PRESSURE_SENSORS:
+        try:
+            i2c = busio.I2C(board.GP7, board.GP6)
+        except RuntimeError as exc:      # nothing plugged into the I2C1 port
+            emit({"type": "err", "t": 0, "msg": "I2C1 port: " + repr(exc)})
+
+    co2_sensor = open_co2_sensor(i2c)
 
     line = None
-    if config.PRESSURE_SENSORS:
-        i2c = busio.I2C(board.GP7, board.GP6)
+    if config.PRESSURE_SENSORS and i2c is not None:
         line = LinePressure(i2c, config.PRESSURE_LINE_ADDR, config.PRESSURE_AMBIENT_ADDR,
                             config.PRESSURE_PERIOD_MS)
 

@@ -179,3 +179,10 @@ def test_messages_contain_no_free_text():
     msg = compose("TECHNICAL", "LINE_BLOCKED", 0)
     assert "not apnoea" in msg and "sampling line blocked" in msg
     assert "Bench rig only" in compose("CRITICAL", "CO2_LOST", 0)
+
+
+def test_demo_mode_is_flagged_on_the_dashboard(setup):
+    ing, client, *_ = setup
+    ing.handle_line(json.dumps({"type": "hello", "t": 0, "fw": "x", "sensor": "demo",
+                                "profile": {"line_monitored": False}}), 1.0)
+    assert client.get("/api/status").json()["mismatch"][0].startswith("DEMO DATA")

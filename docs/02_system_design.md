@@ -55,6 +55,7 @@ that is not in the kit.
 |---|---|---|---|---|
 | GSS SprintIR-WF-20 (preferred) | 0–20 % | 20 Hz streaming | fast; flow-through adapter | UART ASCII `Z`/`z` frames; unfiltered `z` used for speed |
 | GSS ExplorIR-W 20 % | 0–20 % | 2 Hz | seconds | same protocol |
+| Sensirion SCD30 (Adafruit STEMMA QT breakout) | 0–4 % | every 2 s | τ ≈ 20 s (datasheet) | I²C on the kit's STEMMA QT cable; diffusion cell in a small chamber; clips end-tidal ≈ 5 %; expect TREND_ONLY |
 | Winsen MH-Z16 / MH-Z19 5 % or 10 % versions | 0–5/10 % | ~1 Hz polled | tens of seconds | cheap; only a trend monitor; 5 % range clips end-tidal |
 
 The design does not assume which one the group ends up with. The response

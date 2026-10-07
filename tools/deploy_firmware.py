@@ -1,15 +1,20 @@
-"""Copy the firmware and the shared capno_core package onto a mounted CIRCUITPY drive.
+"""Copy the bundle straight onto a mounted CIRCUITPY drive.
 
-    python tools/deploy_firmware.py /media/$USER/CIRCUITPY
-Also install the Adafruit bundle libraries neopixel and adafruit_dps310 into
-CIRCUITPY/lib (circup install neopixel adafruit_dps310).
+    python tools/deploy_firmware.py /media/$USER/CIRCUITPY      (Linux)
+    python tools/deploy_firmware.py /Volumes/CIRCUITPY          (macOS)
+    python tools/deploy_firmware.py E:\\                        (Windows)
+
+Keeps the config.py already on the board (your sensor choice and measured
+profile) unless you add --overwrite-config. You can also simply unzip
+firmware/pico-firmware.zip and drag the files across.
 """
 
 import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build_pico_bundle import bundle_files  # noqa: E402
 
 
 def main():
@@ -19,18 +24,15 @@ def main():
     dest = Path(args[0])
     if not (dest / "boot_out.txt").exists():
         sys.exit(f"{dest} does not look like a CIRCUITPY drive (no boot_out.txt)")
-    lib = dest / "lib" / "capno_core"
-    if lib.exists():
-        shutil.rmtree(lib)
-    lib.mkdir(parents=True)
-    for f in (ROOT / "capno_core").glob("*.py"):
-        shutil.copy2(f, lib / f.name)
-    for name in ("sensors.py", "config.py", "code.py"):   # code.py last: it restarts the board
-        target = dest / name
-        if name == "config.py" and target.exists() and "--overwrite-config" not in sys.argv:
-            print("keeping existing config.py on the board")
+    files = bundle_files()
+    # code.py last: saving it restarts the board
+    for rel in sorted(files, key=lambda r: r == "code.py"):
+        target = dest / rel
+        if rel == "config.py" and target.exists() and "--overwrite-config" not in sys.argv:
+            print("keeping the config.py already on the board")
             continue
-        shutil.copy2(ROOT / "firmware" / name, target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(files[rel], target)
     print("deployed to", dest)
 
 

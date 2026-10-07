@@ -1,0 +1,5 @@
+adafruit_circuitpython_busdevice 5.2.17
+adafruit_circuitpython_dps310 2.1.22
+adafruit_circuitpython_neopixel 6.4.2
+adafruit_circuitpython_register 1.13.0
+adafruit_circuitpython_scd30 2.3.0

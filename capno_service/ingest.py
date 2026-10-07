@@ -104,6 +104,9 @@ class Ingestor:
             with live.lock:
                 live.hello = rec
                 live.mismatch = compare_with_device(live.profile, rec.get("profile"))
+                if rec.get("sensor") == "demo":
+                    live.mismatch.insert(0, "DEMO DATA: the bedside unit is in demo mode "
+                                            "(config.py SENSOR = \"demo\"). Not a measurement.")
         event_id = self.writer.write(rec, host_ts)
         with live.lock:
             live.last_rx = host_ts
