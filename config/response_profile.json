@@ -1,0 +1,11 @@
+{
+  "status": "UNMEASURED",
+  "statement": "Response time has not been measured on this hardware. Treat every value as a breath-averaged trend. This is not a capnograph.",
+  "sensor": null,
+  "line_length_m": null,
+  "t_response_s": null,
+  "delay_s": null,
+  "max_resolvable_rr": 0.0,
+  "mode": "UNMEASURED",
+  "notes": "Replace by running python -m capno_analysis.profile build on the step-test results (docs/06_verification_plan.md, VP-5)."
+}

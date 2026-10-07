@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CO2 Ventilation Monitor</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0f1418; --panel: #172026; --line: #2a363f; --text: #e6edf1; --muted: #8fa1ad;
+    --green: #2fbf71; --amber: #f0a020; --red: #e5484d; --cyan: #22c3e6; --white: #c9d3d9;
+    --trace: #f2f5f7; --grid: #24313a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           padding: 10px 16px; border-bottom: 1px solid var(--line); gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .meta { color: var(--muted); font-size: 13px; }
+  main { padding: 12px 16px; display: grid; gap: 12px;
+         grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .panel h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+              margin: 0 0 8px; font-weight: 600; }
+  #banner { grid-column: 1 / -1; border-radius: 8px; padding: 14px 18px; display: flex;
+            justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+            border: 2px solid var(--line); background: var(--panel); }
+  #banner .state { font-size: 28px; font-weight: 700; letter-spacing: .02em; }
+  #banner .why { font-size: 16px; color: var(--text); }
+  #banner.NORMAL { border-color: var(--green); } #banner.NORMAL .state { color: var(--green); }
+  #banner.ADVISORY { border-color: var(--amber); } #banner.ADVISORY .state { color: var(--amber); }
+  #banner.CRITICAL { border-color: var(--red); background: #3a1517; } #banner.CRITICAL .state { color: var(--red); }
+  #banner.TECHNICAL { border-color: var(--cyan); } #banner.TECHNICAL .state { color: var(--cyan); }
+  #banner.STANDBY .state, #banner.CONFIRMING .state { color: var(--white); }
+  #banner.LINK { border-color: var(--cyan); background: #10303a; } #banner.LINK .state { color: var(--cyan); }
+  .flash { animation: flash 1s steps(2, start) infinite; }
+  @keyframes flash { to { visibility: hidden; } }
+  .nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+  @media (max-width: 600px) { .nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .num { background: #11191e; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+  .num .label { font-size: 12px; color: var(--muted); }
+  .num .value { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .num .unit { font-size: 13px; color: var(--muted); margin-left: 4px; }
+  .num .note { font-size: 12px; color: var(--amber); min-height: 1.2em; }
+  canvas { width: 100%; display: block; background: #0c1114; border: 1px solid var(--line); border-radius: 6px; }
+  #trace { height: 220px; } #trend { height: 160px; }
+  .capability .mode { font-size: 15px; font-weight: 600; margin: 4px 0 8px; }
+  .capability.UNMEASURED .mode, .capability.TREND_ONLY .mode { color: var(--amber); }
+  .capability.SIM .mode::after { content: " (SIMULATED)"; color: var(--cyan); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 14px; }
+  dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .warn { color: var(--amber); font-size: 13px; margin-top: 6px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { background: #22303a; color: var(--text); border: 1px solid #36505f; border-radius: 6px;
+           padding: 8px 12px; font: inherit; cursor: pointer; }
+  button:hover { background: #2b3d49; }
+  button.primary { border-color: var(--red); }
+  input, select { background: #11191e; color: var(--text); border: 1px solid var(--line);
+                  border-radius: 5px; padding: 6px 8px; font: inherit; min-width: 0; }
+  #events { max-height: 260px; overflow-y: auto; font-size: 13px; font-variant-numeric: tabular-nums; }
+  #events div { padding: 3px 0; border-bottom: 1px solid #1e2930; }
+  .k-CRITICAL { color: var(--red); } .k-ADVISORY { color: var(--amber); }
+  .k-TECHNICAL, .k-link { color: var(--cyan); } .k-marker { color: var(--muted); }
+  form.rcp { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 13px; }
+  form.rcp label.full { grid-column: 1 / -1; }
+  .small { font-size: 12px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td, th { text-align: left; padding: 3px 4px; border-bottom: 1px solid #1e2930; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Is the patient ventilating? — exhaled CO2 monitor (bench rig, EXSU 620 Project 06)</h1>
+  <span class="meta" id="meta">connecting…</span>
+</header>
+<main>
+  <section id="banner" class="STANDBY">
+    <div><div class="state" id="state">—</div><div class="why" id="why"></div></div>
+    <div class="buttons">
+      <button class="primary" onclick="cmd('ACK')">Acknowledge</button>
+      <button onclick="cmd('ARM')">Arm (airway placed)</button>
+      <button onclick="enableSound()" id="soundBtn">Enable sound</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="nums">
+      <div class="num"><div class="label">CO2 now</div><div><span class="value" id="co2">—</span><span class="unit">%</span></div><div class="note"></div></div>
+      <div class="num"><div class="label" id="etLabel">End-tidal CO2</div><div><span class="value" id="et">—</span><span class="unit">%</span></div><div class="note" id="etNote"></div></div>
+      <div class="num"><div class="label">Breathing rate</div><div><span class="value" id="rr">—</span><span class="unit">/min</span></div><div class="note" id="rrNote"></div></div>
+      <div class="num"><div class="label">Line vacuum</div><div><span class="value" id="vac">—</span><span class="unit">kPa</span></div><div class="note" id="vacNote"></div></div>
+    </div>
+    <h2>Live CO2 trace, last 60 s</h2>
+    <canvas id="trace"></canvas>
+    <h2 style="margin-top:10px">Trend, last 30 min — end-tidal CO2 (white) and breathing rate (green)</h2>
+    <canvas id="trend"></canvas>
+  </section>
+
+  <aside style="display:grid; gap:12px; align-content:start; min-width:0">
+    <section class="panel capability" id="cap">
+      <h2>Instrument response — measured, not assumed</h2>
+      <div class="mode" id="capMode">—</div>
+      <dl id="capList"></dl>
+      <div class="warn" id="mismatch"></div>
+    </section>
+    <section class="panel">
+      <h2>Controls</h2>
+      <div class="buttons">
+        <button onclick="cmd('BASELINE')">Re-baseline</button>
+        <button onclick="mark()">Marker</button>
+        <button onclick="if (confirm('End the case and clear all patient alarms?')) cmd('DISARM')">Disarm (end case)</button>
+      </div>
+      <div class="small" style="margin-top:6px">Bedside button: short press acknowledge, 2–5 s arm, hold 5 s disarm, double press marker.</div>
+    </section>
+    <section class="panel">
+      <h2>Event log</h2>
+      <div id="events"></div>
+    </section>
+  </aside>
+
+  <section class="panel">
+    <h2>Notification recipients (opted-in course participants only)</h2>
+    <form class="rcp" onsubmit="addRecipient(event)">
+      <input name="alias" placeholder="alias, e.g. group6_nurse" required>
+      <input name="address" placeholder="+15195550100" required>
+      <select name="channel"><option>log</option><option>callmebot</option><option>twilio</option></select>
+      <input name="apikey" placeholder="CallMeBot API key (if used)">
+      <select name="levels">
+        <option value="CRITICAL,TECHNICAL">critical + technical</option>
+        <option value="CRITICAL,ADVISORY,TECHNICAL">all alarms</option>
+        <option value="CRITICAL">critical only</option>
+      </select>
+      <button type="submit">Register</button>
+      <label class="full small"><input type="checkbox" name="consent" required> This participant has opted in to receive bench-rig alarm messages. The consent time is stored.</label>
+    </form>
+    <table style="margin-top:8px"><thead><tr><th>Alias</th><th>Channel</th><th>Number</th><th>Levels</th><th>Consent</th><th></th></tr></thead><tbody id="rcpBody"></tbody></table>
+  </section>
+  <section class="panel">
+    <h2>Recent notifications</h2>
+    <table><thead><tr><th>Level</th><th>To</th><th>Latency</th><th>OK</th></tr></thead><tbody id="ntfBody"></tbody></table>
+  </section>
+</main>
+
+<script>
+const REASONS = {
+  CO2_LOST: "No exhaled CO2 while the circuit was reported connected — check tube, circuit and patient",
+  NO_CO2: "No exhaled CO2 since the airway was placed — check tube position",
+  CO2_NOT_SUSTAINED: "CO2 seen but not sustained — possible oesophageal placement",
+  ETCO2_LOW: "End-tidal CO2 low (sustained)", ETCO2_FALL: "End-tidal CO2 falling (sustained)",
+  CO2_TREND_FALL: "Breath-averaged CO2 falling (sustained)",
+  RR_LOW: "Breathing rate low (sustained)", RR_FALL: "Breathing rate falling (sustained)",
+};
+const TECH = {
+  LINE_BLOCKED: "Sampling line blocked", LINE_OPEN: "Sampling line open or disconnected at the monitor",
+  LINE_SENSOR: "Line pressure sensor not responding", SENSOR_SILENT: "CO2 sensor not responding",
+  SENSOR_RANGE: "CO2 reading out of range", SENSOR_COMMS: "CO2 sensor communication errors",
+  ZERO_DRIFT: "CO2 zero drift — re-zero in room air", BASELINE_HIGH: "Inspired CO2 high — zero drift or rebreathing",
+};
+const COLORS = { NORMAL: "#2fbf71", ADVISORY: "#f0a020", CRITICAL: "#e5484d", TECHNICAL: "#22c3e6",
+                 STANDBY: "#c9d3d9", CONFIRMING: "#c9d3d9" };
+let samples = [];            // [seq, t, co2, vac, d]
+let last = null, profile = null, audioCtx = null, lastBeep = 0, events = [];
+
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 1) => v === null || v === undefined ? "—" : Number(v).toFixed(d);
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+async function cmd(c, note) {
+  try { await api("/api/command", { method: "POST", headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ cmd: c, note: note || "" }) }); }
+  catch (e) { alert(e.message); }
+}
+function mark() {
+  const n = prompt("Marker note (e.g. step up, truth=blocked). No names or identifiers.", "");
+  if (n !== null) cmd("MARK", n);
+}
+function enableSound() {
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  $("soundBtn").textContent = "Sound on";
+}
+function beep(freq, n, gap) {
+  if (!audioCtx) return;
+  for (let i = 0; i < n; i++) {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = freq; o.connect(g); g.connect(audioCtx.destination);
+    const t0 = audioCtx.currentTime + i * gap;
+    g.gain.setValueAtTime(0.2, t0); g.gain.setValueAtTime(0, t0 + gap * 0.6);
+    o.start(t0); o.stop(t0 + gap);
+  }
+}
+
+async function loadProfile() {
+  profile = await api("/api/profile");
+  const cap = $("cap");
+  cap.className = "panel capability " + profile.mode + ((profile.source || "").startsWith("SIM") ? " SIM" : "");
+  $("capMode").textContent = profile.mode_text;
+  const rows = [];
+  const add = (k, v) => rows.push(`<dt>${k}</dt><dd>${v}</dd>`);
+  add("Status", profile.status + (profile.source ? " — " + profile.source : ""));
+  if (profile.sensor) add("Sensor", profile.sensor);
+  if (profile.line_length_m) add("Sampling line", profile.line_length_m + " m");
+  add("Response t10–90", profile.t_response_s ? fmt(profile.t_response_s, 2) + " s" + (profile.t10_90_s ? ` (n=${profile.t10_90_s.n})` : "") : "not measured");
+  add("Transport delay", profile.delay_s ? fmt(profile.delay_s, 2) + " s" : "not measured");
+  if (profile.delay_vs_length) add("Delay per metre", fmt(profile.delay_vs_length.slope_s_per_m, 2) + " s/m");
+  add("Breath-by-breath to", profile.max_resolvable_rr ? fmt(profile.max_resolvable_rr, 0) + " /min" : "no claim");
+  if (profile.captured_at) add("Peak captured at 12 / 20 / 30 /min",
+      ["12", "20", "30"].map(k => Math.round(profile.captured_at[k] * 100) + "%").join(" / "));
+  add("Loss-of-CO2 alarm latency", profile.loss_alarm_latency_s ? "≤ " + fmt(profile.loss_alarm_latency_s, 0) + " s worst case" : "not measured");
+  if (profile.measured_on) add("Measured", profile.measured_on);
+  $("capList").innerHTML = rows.join("");
+}
+
+function render(p) {
+  last = p;
+  const st = p.status || {};
+  const banner = $("banner");
+  let state = st.display || "—", why = "";
+  if (!p.link_ok && p.last_rx) {
+    state = "NO DATA"; why = "Laptop lost the link to the bedside unit. The bedside light and tone still work.";
+    banner.className = "LINK";
+  } else {
+    banner.className = state;
+    if (state === "CRITICAL") why = REASONS[st.reason] || st.reason;
+    else if (state === "TECHNICAL") why = (st.tech || []).map(c => TECH[c] || c).join("; ") +
+        " — patient status UNKNOWN. This is a monitoring fault, not apnoea.";
+    else if (state === "ADVISORY") why = (st.reason || "").split(",").map(r => REASONS[r] || r).join("; ");
+    else if (state === "NORMAL") why = "Exhaled CO2 present";
+    else if (state === "CONFIRMING") why = `Waiting for exhaled CO2: ${st.confirm || 0} of 6 breaths`;
+    else if (state === "STANDBY") why = "Not connected. Press Arm when the airway is placed.";
+    if (state === "CRITICAL" && (st.tech || []).length) why += " (also: " + st.tech.map(c => TECH[c] || c).join("; ") + ")";
+    if (st.acked && state === "CRITICAL") why += " — acknowledged, clears when CO2 returns";
+  }
+  $("state").textContent = state;
+  $("state").classList.toggle("flash", state === "CRITICAL");
+  $("why").textContent = why;
+
+  $("co2").textContent = fmt(st.co2, 2);
+  $("et").textContent = fmt(st.et, 1);
+  const kind = st.et_kind;
+  $("etLabel").textContent = kind === "trend" ? "Breath-averaged CO2 peak" :
+                             kind === "attenuated" ? "Peak CO2 (attenuated)" : "End-tidal CO2";
+  $("etNote").textContent = kind === "trend" ? "breaths not resolved — trend only" :
+      kind === "attenuated" ? `under-reads: ~${Math.round((st.et_capture || 0) * 100)}% of true EtCO2` :
+      (st.base_et ? `baseline ${fmt(st.base_et, 1)} %` : "");
+  $("rr").textContent = fmt(st.rr, 0);
+  $("rrNote").textContent = { unresolved: "breaths not resolved by this hardware",
+      beyond_limit: "above breath-resolution limit", near_limit: "near breath-resolution limit",
+      unverified: "response time unmeasured" }[st.rr_note] || (st.base_rr ? `baseline ${fmt(st.base_rr, 0)} /min` : "");
+  $("vac").textContent = fmt(st.vac, 1);
+  const dev = (p.device && p.device.profile) || {};
+  $("vacNote").textContent = dev.line_monitored === false ? "line NOT monitored" : "";
+  $("mismatch").textContent = (p.mismatch || []).join(" · ");
+  $("meta").textContent = `${p.source || ""} · session ${p.session_id ?? "—"} · fw ${(p.device || {}).fw || "?"}`;
+
+  const now = performance.now();
+  if (audioCtx && p.link_ok) {
+    if (state === "CRITICAL" && !st.paused && now - lastBeep > 10000) { beep(880, 10, 0.2); lastBeep = now; }
+    else if (state === "ADVISORY" && !st.paused && now - lastBeep > 20000) { beep(660, 3, 0.25); lastBeep = now; }
+  }
+}
+
+function addEvents(evs) {
+  for (const e of evs) events.push(e);
+  events = events.slice(-200);
+  $("events").innerHTML = events.slice().reverse().map(e => {
+    const time = new Date(e.host_ts * 1000).toLocaleTimeString();
+    if (e.type === "m") return `<div class="k-marker">${time} marker: ${escapeHtml(e.note || "")}</div>`;
+    const cls = e.kind === "alarm" ? "k-" + e.to : e.kind === "technical" ? "k-TECHNICAL" : e.kind === "link" ? "k-link" : "";
+    const what = e.kind === "technical" ? (e.to ? "fault " + e.to : "cleared " + e.from) :
+                 `${e.kind}: ${e.from ?? ""} → ${e.to ?? ""}`;
+    return `<div class="${cls}">${time} ${what} ${e.reason ? "(" + escapeHtml(e.reason) + ")" : ""}</div>`;
+  }).join("");
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function setupCanvas(c) {
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(r.width * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
+  const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, r.width, r.height];
+}
+function axes(ctx, w, h, ymax, yticks, label) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = "#24313a"; ctx.fillStyle = "#8fa1ad"; ctx.font = "11px system-ui"; ctx.lineWidth = 1;
+  for (const y of yticks) {
+    const py = h - 18 - (y / ymax) * (h - 28);
+    ctx.beginPath(); ctx.moveTo(32, py); ctx.lineTo(w - 4, py); ctx.stroke();
+    ctx.fillText(String(y), 4, py + 4);
+  }
+  ctx.fillText(label, 36, 12);
+}
+function drawTrace() {
+  const [ctx, w, h] = setupCanvas($("trace"));
+  const ymax = 8; axes(ctx, w, h, ymax, [0, 2, 4, 6, 8], "CO2 %");
+  if (!samples.length) return;
+  const tEnd = samples[samples.length - 1][1], span = 60000;
+  const x = t => 32 + (w - 36) * (1 - (tEnd - t) / span);
+  const y = v => h - 18 - (Math.max(0, Math.min(ymax, v)) / ymax) * (h - 28);
+  ctx.lineWidth = 1.6;
+  let prev = null;
+  for (const s of samples) {
+    if (s[1] < tEnd - span || s[2] === null) { prev = null; continue; }
+    if (prev) {
+      ctx.strokeStyle = COLORS[s[4]] || "#f2f5f7";
+      ctx.beginPath(); ctx.moveTo(x(prev[1]), y(prev[2])); ctx.lineTo(x(s[1]), y(s[2])); ctx.stroke();
+    }
+    prev = s;
+  }
+  ctx.fillStyle = "#8fa1ad";
+  ctx.fillText("−60 s", 34, h - 4); ctx.fillText("now", w - 26, h - 4);
+}
+async function drawTrend() {
+  let rows;
+  try { rows = await api("/api/trend?minutes=30"); } catch { return; }
+  const [ctx, w, h] = setupCanvas($("trend"));
+  axes(ctx, w, h, 40, [0, 10, 20, 30, 40], "EtCO2 % ×5  ·  RR /min");
+  if (!rows.length) return;
+  const tEnd = rows[rows.length - 1].host_ts, span = 1800;
+  const x = t => 32 + (w - 36) * (1 - (tEnd - t) / span);
+  const y = v => h - 18 - (Math.max(0, Math.min(40, v)) / 40) * (h - 28);
+  for (const [key, scale, colour] of [["et", 5, "#f2f5f7"], ["rr", 1, "#2fbf71"]]) {
+    ctx.strokeStyle = colour; ctx.lineWidth = 1.5; ctx.beginPath(); let started = false;
+    for (const r of rows) {
+      if (r[key] === null) { started = false; continue; }
+      const px = x(r.host_ts), py = y(r[key] * scale);
+      if (!started) { ctx.moveTo(px, py); started = true; } else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#8fa1ad"; ctx.fillText("−30 min", 34, h - 4); ctx.fillText("now", w - 26, h - 4);
+}
+
+async function loadRecipients() {
+  const rs = await api("/api/recipients");
+  $("rcpBody").innerHTML = rs.map(r => `<tr><td>${escapeHtml(r.alias)}</td><td>${r.channel}</td><td>${r.address}</td>
+    <td>${r.levels}</td><td>${r.revoked_at ? "revoked" : r.consent_at}</td>
+    <td>${r.revoked_at ? "" : `<button onclick="revoke(${r.id})">Revoke</button>`}</td></tr>`).join("");
+  const ns = await api("/api/notifications?limit=10");
+  $("ntfBody").innerHTML = ns.map(n => `<tr><td class="k-${n.level}">${n.level}</td><td>${escapeHtml(n.alias || "")}</td>
+    <td>${n.latency_s ?? "—"} s</td><td>${n.ok ? "yes" : "no: " + escapeHtml(n.detail || "")}</td></tr>`).join("");
+}
+async function addRecipient(ev) {
+  ev.preventDefault();
+  const f = new FormData(ev.target);
+  const body = Object.fromEntries(f.entries()); body.consent = f.get("consent") === "on";
+  try { await api("/api/recipients", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        ev.target.reset(); loadRecipients(); }
+  catch (e) { alert(e.message); }
+}
+async function revoke(id) { await api("/api/recipients/" + id, { method: "DELETE" }); loadRecipients(); }
+
+function connect() {
+  const es = new EventSource("/api/stream");
+  es.onmessage = m => {
+    const p = JSON.parse(m.data);
+    if (p.samples.length) {
+      if (samples.length && p.samples[0][1] < samples[samples.length - 1][1]) samples = []; // device restarted
+      samples.push(...p.samples);
+      const cut = samples[samples.length - 1][1] - 62000;
+      let i = 0; while (i < samples.length && samples[i][1] < cut) i++;
+      if (i) samples = samples.slice(i);
+    }
+    if (p.events.length) addEvents(p.events);
+    render(p);
+  };
+  es.onerror = () => { $("meta").textContent = "service unreachable — retrying"; };
+}
+
+(async () => {
+  try { await loadProfile(); } catch (e) { $("capMode").textContent = "profile unavailable"; }
+  connect();
+  setInterval(drawTrace, 200);
+  drawTrend(); setInterval(drawTrend, 5000);
+  loadRecipients(); setInterval(loadRecipients, 10000);
+})();
+</script>
+</body>
+</html>

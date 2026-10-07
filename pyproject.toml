@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "capno-monitor"
+version = "0.1.0"
+description = "EXSU 620 Project 06: exhaled CO2 presence and hypoventilation monitor (bench rig)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "pyserial>=3.5",
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.setuptools]
+packages = ["capno_core", "capno_sim", "capno_service", "capno_analysis"]
+
+[tool.setuptools.package-data]
+capno_service = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
